@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>RSI Pulse</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%230B1120'/%3E%3Cpath d='M15 70 L38 45 L55 58 L85 22' stroke='%23E8A33D' stroke-width='7' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#0B1120" />
+<link rel="manifest" href="manifest.webmanifest" />
+<style>
+  :root{
+    --bg:#0B1120; --card:#131B2E; --card2:#0F1626; --line:#22304A;
+    --text:#E4E9F2; --sub:#8592AC;
+    --buy:#E8A33D; --sell:#D9636C; --neutral:#4E5C77;
+    --rsi-line:#33D6A6; --earn-soon:#E39FCB; --earn-urgent:#FF5C6C;
+    --mono: "SFMono-Regular", ui-monospace, "JetBrains Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+       padding-bottom:calc(24px + env(safe-area-inset-bottom));}
+  header{position:sticky; top:0; z-index:5; background:linear-gradient(180deg, var(--bg) 80%, transparent);
+         padding:calc(18px + env(safe-area-inset-top)) 18px 10px;}
+  .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.14em; color:var(--sub); text-transform:uppercase;}
+  h1{font-size:22px; margin:4px 0 2px; font-weight:700; letter-spacing:-.01em;}
+  .updated{font-family:var(--mono); font-size:12px; color:var(--sub);}
+  .gear{position:absolute; right:16px; top:calc(20px + env(safe-area-inset-top)); background:none; border:none;
+        color:var(--sub); font-size:20px; padding:6px;}
+  main{padding:6px 14px 20px;}
+  .card{background:var(--card); border:2px solid var(--line); border-radius:10px 0 10px 10px; padding:10px 14px; margin-bottom:8px; position:relative;}
+  .card.buy{border-color:var(--buy);}
+  .card.sell{border-color:var(--sell);}
+  .corner-ribbon{position:absolute; top:-2px; right:-2px; pointer-events:none;}
+  .row{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px 12px; padding-right:52px;}
+  .name-line{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; flex:1; min-width:0;}
+  .name{font-weight:700; font-size:15px; white-space:nowrap;}
+  .code{font-family:var(--mono); color:var(--sub); font-size:11px;}
+  .earnings{font-family:var(--mono); font-size:12px; font-weight:600;}
+  .earnings.unknown{color:var(--sub); font-weight:400;}
+  .earnings.normal{color:var(--text);}
+  .earnings.soon{color:var(--earn-soon);}
+  .earnings.urgent{color:var(--earn-urgent);}
+  .badge{font-family:var(--mono); font-size:11px; padding:3px 9px; border-radius:20px; font-weight:700; letter-spacing:.02em; white-space:nowrap;}
+  .badge.watch{background:rgba(78,92,119,.2); color:var(--sub); border:1px solid var(--line);}
+  .history-inline{cursor:pointer; display:inline-flex; align-items:center; gap:5px;
+    font-family:var(--mono); font-size:12px; color:var(--text);
+    background:var(--card2); border:1px solid var(--line); border-radius:6px; padding:2px 7px;}
+  .history-inline .b{color:var(--buy); font-weight:700;}
+  .history-inline .b .sub{color:var(--sub); font-weight:400; font-size:10px; margin-left:1px;}
+  .history-inline .s{color:var(--sell); font-weight:700;}
+  .history-inline .chev{color:var(--sub); font-size:10px; transition:transform .2s;}
+  .history-inline.open .chev{transform:rotate(90deg);}
+  .history-panel{max-height:0; overflow:hidden; transition:max-height .25s ease;}
+  .history-panel.open{max-height:220px;}
+  .history-panel-inner{padding-top:8px;}
+  .history-legend{display:flex; gap:14px; font-family:var(--mono); font-size:9.5px; color:var(--sub); margin-top:2px;}
+  .history-legend span{display:inline-flex; align-items:center; gap:4px;}
+  .history-legend i{width:7px; height:7px; border-radius:50%; display:inline-block;}
+  .history-legend i.ring{background:none; border:1.4px solid var(--buy); width:6px; height:6px;}
+  .chart-wrap{margin-top:8px;}
+  .chart-label{font-family:var(--mono); font-size:9px; color:var(--sub); letter-spacing:.1em; margin-bottom:1px;}
+  .chart-wrap svg{display:block; width:100%; height:auto;}
+  .empty{color:var(--sub); text-align:center; padding:40px 10px; font-size:14px; line-height:1.7;}
+  .refresh{width:100%; padding:13px; border-radius:12px; border:1px solid var(--line); background:var(--card2);
+           color:var(--text); font-size:14px; margin-top:6px;}
+
+  /* Settings drawer */
+  .drawer-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .2s; z-index:10;}
+  .drawer-backdrop.open{opacity:1; pointer-events:auto;}
+  .drawer{position:fixed; top:0; right:0; bottom:0; width:min(360px,88vw); background:var(--card); z-index:11;
+          transform:translateX(100%); transition:transform .25s ease; overflow-y:auto;
+          padding:calc(20px + env(safe-area-inset-top)) 18px 30px; border-left:1px solid var(--line);}
+  .drawer.open{transform:translateX(0);}
+  .drawer h2{font-size:16px; margin:0 0 14px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:11px; color:var(--sub); margin-bottom:5px; letter-spacing:.04em;}
+  .field input{width:100%; padding:9px 10px; border-radius:8px; border:1px solid var(--line);
+               background:var(--card2); color:var(--text); font-size:14px; font-family:var(--mono);}
+  .stock-row{border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px;}
+  .stock-row .two{display:flex; gap:8px;}
+  .stock-row .two input:first-child{flex:0 0 70px;}
+  .chk{display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; color:var(--sub);}
+  .del{background:none; border:none; color:var(--sell); font-size:12px; float:right;}
+  .add-btn, .save-btn{width:100%; padding:11px; border-radius:10px; border:none; font-size:14px; font-weight:600; margin-top:6px;}
+  .add-btn{background:var(--card2); color:var(--text); border:1px dashed var(--line);}
+  .save-btn{background:var(--buy); color:#1a1204;}
+  .close-btn{position:absolute; top:calc(18px + env(safe-area-inset-top)); right:16px; background:none; border:none; color:var(--sub); font-size:20px;}
+  hr{border:none; border-top:1px solid var(--line); margin:18px 0;}
+  .hint{font-size:11px; color:var(--sub); line-height:1.6;}
+  .status-msg{font-size:12px; margin-top:10px; min-height:16px;}
+  .status-msg.ok{color:var(--buy);}
+  .status-msg.err{color:var(--sell);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">RSI PULSE</div>
+  <h1>RSI Pulse</h1>
+  <div class="updated" id="updated">未取得</div>
+  <button class="gear" onclick="openDrawer()">⚙</button>
+</header>
+
+<main>
+  <div id="list"></div>
+  <button class="refresh" onclick="refreshAll()">今すぐ更新</button>
+</main>
+
+<div class="drawer-backdrop" id="backdrop" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <button class="close-btn" onclick="closeDrawer()">✕</button>
+  <h2>接続設定</h2>
+  <div class="field"><label>GitHubユーザー名</label><input id="gh_owner" placeholder="your-username"></div>
+  <div class="field"><label>リポジトリ名</label><input id="gh_repo" placeholder="stock-alert-app"></div>
+  <div class="field"><label>ブランチ</label><input id="gh_branch" placeholder="main" value="main"></div>
+  <div class="field"><label>Personal Access Token</label><input id="gh_token" type="password" placeholder="ghp_..."></div>
+  <div class="hint">Tokenはこの端末のブラウザ内にのみ保存され、外部には送信されません（GitHub API以外への通信はありません）。Fine-grained tokenでこのリポジトリのContentsをRead/Write権限にして発行してください。</div>
+
+  <hr>
+  <h2>通知</h2>
+  <div id="pushStatus" class="hint">確認中…</div>
+  <button class="add-btn" id="pushBtn" onclick="enablePush()">通知を有効にする</button>
+
+  <hr>
+  <h2>監視銘柄</h2>
+  <div id="stockEditor"></div>
+  <button class="add-btn" onclick="addStockRow()">＋ 銘柄を追加</button>
+
+  <hr>
+  <h2>しきい値</h2>
+  <div class="field"><label>買い①: RSIがこの値以下 かつ 終値で5MAを上抜け</label><input id="rsi_upper" type="number"></div>
+  <div class="field"><label>買い②: RSIがこの値以下(単独・5MA条件なしで成立)</label><input id="rsi_oversold" type="number"></div>
+  <div class="field"><label>売り: RSIがこの値以上 かつ 終値で5MAを下抜け</label><input id="rsi_lower" type="number"></div>
+  <div class="hint">通知用の鍵(VAPID)はコードに埋め込み済みです。秘密鍵は公開リポジトリに漏れないよう、GitHubリポジトリの Settings → Secrets and variables → Actions で「VAPID_PRIVATE_KEY」として設定してください。</div>
+
+  <button class="save-btn" onclick="saveConfig()">保存してGitHubに反映</button>
+  <div class="status-msg" id="statusMsg"></div>
+</div>
+
+<script>
+const LS = {
+  owner: localStorage.getItem('gh_owner') || '',
+  repo: localStorage.getItem('gh_repo') || '',
+  branch: localStorage.getItem('gh_branch') || 'main',
+  token: localStorage.getItem('gh_token') || '',
+};
+let configSha = null;
+let currentConfig = null;
+
+function apiUrl(path){
+  return `https://api.github.com/repos/${LS.owner}/${LS.repo}/contents/${path}?ref=${LS.branch}`;
+}
+function authHeaders(){
+  const h = {"Accept":"application/vnd.github+json"};
+  if (LS.token) h["Authorization"] = `Bearer ${LS.token}`;
+  return h;
+}
+function b64ToUtf8(b64){
+  return decodeURIComponent(escape(atob(b64.replace(/\n/g,''))));
+}
+function utf8ToB64(str){
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+async function fetchJsonFile(path){
+  const res = await fetch(apiUrl(path), {headers: authHeaders()});
+  if (!res.ok) throw new Error(`${path} の取得に失敗 (${res.status})`);
+  const data = await res.json();
+  return {content: JSON.parse(b64ToUtf8(data.content)), sha: data.sha};
+}
+
+async function refreshAll(){
+  if (!LS.owner || !LS.repo){ openDrawer(); return; }
+  const listEl = document.getElementById('list');
+  listEl.innerHTML = '<div class="empty">読み込み中…</div>';
+  try{
+    const [statusRes, configRes] = await Promise.all([
+      fetchJsonFile('status.json'),
+      fetchJsonFile('config.json'),
+    ]);
+    currentConfig = configRes.content;
+    configSha = configRes.sha;
+    renderList(statusRes.content, currentConfig);
+    populateEditor(currentConfig);
+  }catch(e){
+    listEl.innerHTML = `<div class="empty">読み込みエラー: ${e.message}<br>右上の⚙から接続設定を確認してください。</div>`;
+  }
+}
+
+function buildCornerRibbon(label, kind){
+  const fillMap = { buy: '#E8A33D', sell: '#D9636C', watch: '#3A4863' };
+  const textMap = { buy: '#1A1204', sell: '#2A0A0D', watch: '#C7D0E0' };
+  const fill = fillMap[kind] || fillMap.watch;
+  const tcolor = textMap[kind] || textMap.watch;
+  // 右辺は角丸にせず直角のままにして、下に続くカードの枠線とぴったり接続させる
+  const W = 68, H = 30, boxX = 12, r = 10;
+  const path = `M${boxX+r},0 H${W-r} Q${W},0 ${W},${r} V${H} H${boxX+r} Q${boxX},${H} ${boxX},${H-r} V${r} Q${boxX},0 ${boxX+r},0 Z`;
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="corner-ribbon" aria-hidden="true">
+    <rect x="0" y="0" width="${W}" height="${H}" fill="#131B2E"/>
+    <rect x="0" y="0" width="${boxX}" height="2" fill="${fill}"/>
+    <path d="${path}" fill="${fill}"/>
+    <text x="${boxX + (W-boxX)/2}" y="${H/2+5}" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif" font-size="13" font-weight="800" fill="${tcolor}">${label}</text>
+  </svg>`;
+}
+
+function formatEarnings(dateStr){
+  if (!dateStr) return { text: '未定', cls: 'unknown' };
+  const d = new Date(dateStr + 'T00:00:00+09:00');
+  if (isNaN(d.getTime())) return { text: '未定', cls: 'unknown' };
+  const now = new Date();
+  const days = Math.ceil((d - now) / 86400000);
+  const label = `${d.getMonth()+1}/${d.getDate()}`;
+  let cls = 'normal';
+  if (days <= 7) cls = 'urgent';
+  else if (days <= 30) cls = 'soon';
+  return { text: label, cls };
+}
+
+function buildPriceChart(priceHist, ma5Hist, w=300, h=58){
+  const vals = [...priceHist, ...ma5Hist].filter(v => v != null);
+  if (vals.length < 2) return '';
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = (max - min) || 1;
+  const labelW = 38;             // 右側の数値表示エリア
+  const plotL = 2, plotR = w - labelW;
+  const padY = 6;
+  const yOf = (v) => (h - padY) - ((v - min) / range) * (h - padY*2);
+  const toPts = (arr) => arr.map((v, i) => {
+    const x = (i / (arr.length - 1)) * (plotR - plotL) + plotL;
+    return `${x.toFixed(1)},${yOf(v).toFixed(1)}`;
+  }).join(' ');
+
+  const stepCount = 6;
+  const steps = Array.from({length: stepCount}, (_, i) => max - (range * i) / (stepCount - 1));
+  const gridLines = steps.map(v => {
+    const y = yOf(v).toFixed(1);
+    return `<line x1="${plotL}" y1="${y}" x2="${plotR}" y2="${y}" stroke="#1B2740" stroke-width="1"/>
+      <text x="${plotR+4}" y="${(+y+2.5).toFixed(1)}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="6" fill="#5C6B84">${Math.round(v).toLocaleString()}</text>`;
+  }).join('');
+
+  const lastPrice = priceHist[priceHist.length-1];
+  const lastY = yOf(lastPrice);
+  const clampedY = Math.min(h-6, Math.max(6, lastY));
+  const priceLabel = lastPrice.toLocaleString();
+  const boxW = priceLabel.length * 5.4 + 6;   // 文字数に応じて枠の幅を可変に
+  const boxX = w - boxW - 1;
+
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    ${gridLines}
+    <polyline points="${toPts(priceHist)}" fill="none" stroke="#8592AC" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>
+    <polyline points="${toPts(ma5Hist)}" fill="none" stroke="#F02FD0" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>
+    <rect x="${plotL}" y="1" width="22" height="9" rx="2" fill="#131B2E"/>
+    <text x="${plotL+2.5}" y="8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="7" font-weight="700" fill="#F02FD0">5MA</text>
+    <rect x="${boxX.toFixed(1)}" y="${(clampedY-5.5).toFixed(1)}" width="${boxW.toFixed(1)}" height="11" rx="2.5" fill="#E4E9F2"/>
+    <text x="${(boxX+boxW/2).toFixed(1)}" y="${(clampedY+2.5).toFixed(1)}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8" font-weight="700" fill="#0B1120">${priceLabel}</text>
+  </svg>`;
+}
+
+function buildRsiChart(rsiHist, w=300, h=46){
+  const vals = rsiHist.filter(v => v != null);
+  if (vals.length < 2) return '';
+  const labelW = 38;
+  const plotL = 2, plotR = w - labelW;
+  const padY = 6;
+  const yOf = (v) => (h - padY) - (v / 100) * (h - padY*2);
+  const toPts = (arr) => {
+    let pts = [];
+    arr.forEach((v, i) => {
+      if (v == null) return;
+      const x = (i / (arr.length - 1)) * (plotR - plotL) + plotL;
+      pts.push(`${x.toFixed(1)},${yOf(v).toFixed(1)}`);
+    });
+    return pts.join(' ');
+  };
+
+  const steps = [90, 70, 50, 30, 10];
+  const gridLines = steps.map(v => {
+    const y = yOf(v).toFixed(1);
+    const dash = (v === 70 || v === 30) ? ' stroke-dasharray="3,3"' : '';
+    return `<line x1="${plotL}" y1="${y}" x2="${plotR}" y2="${y}" stroke="#1B2740" stroke-width="1"${dash}/>
+      <text x="${plotR+4}" y="${(+y+2.5).toFixed(1)}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="6" fill="#5C6B84">${v}</text>`;
+  }).join('');
+
+  const lastRsi = vals[vals.length-1];
+  const lastY = yOf(lastRsi);
+  const clampedY = Math.min(h-6, Math.max(6, lastY));
+  const rsiLabel = String(lastRsi);
+  const boxW = rsiLabel.length * 5.4 + 6;
+  const boxX = w - boxW - 1;
+
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    ${gridLines}
+    <polyline points="${toPts(rsiHist)}" fill="none" stroke="#33D6A6" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/>
+    <rect x="${boxX.toFixed(1)}" y="${(clampedY-5.5).toFixed(1)}" width="${boxW.toFixed(1)}" height="11" rx="2.5" fill="#E4E9F2"/>
+    <text x="${(boxX+boxW/2).toFixed(1)}" y="${(clampedY+2.5).toFixed(1)}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8" font-weight="700" fill="#0B1120">${rsiLabel}</text>
+  </svg>`;
+}
+
+function buildHistoryChart(chart1y, signalHistory, w=300, h=100){
+  if (!chart1y || !chart1y.dates || chart1y.dates.length < 2) {
+    return '<div class="hint">履歴データがありません。</div>';
+  }
+  const dates = chart1y.dates, prices = chart1y.prices;
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const range = (max - min) || 1;
+  const padX = 4, padY = 10;
+  const xOf = (i) => (i / (dates.length - 1)) * (w - padX*2) + padX;
+  const yOf = (v) => (h - padY) - ((v - min) / range) * (h - padY*2);
+  const linePts = prices.map((v,i) => `${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`).join(' ');
+
+  const dateIndex = {};
+  dates.forEach((d,i) => dateIndex[d] = i);
+  const dots = (signalHistory || []).map(ev => {
+    const i = dateIndex[ev.date];
+    if (i == null) return '';
+    const cx = xOf(i).toFixed(1), cy = yOf(prices[i]).toFixed(1);
+    if (ev.type === 'sell'){
+      return `<circle cx="${cx}" cy="${cy}" r="3.2" fill="#D9636C" stroke="#0B1120" stroke-width="1"/>`;
+    }
+    if (ev.type === 'buy_oversold'){
+      // RSI20到達: 中抜けのリング(塗りつぶしなし)で区別
+      return `<circle cx="${cx}" cy="${cy}" r="3.4" fill="none" stroke="#E8A33D" stroke-width="1.6"/>`;
+    }
+    return `<circle cx="${cx}" cy="${cy}" r="3.2" fill="#E8A33D" stroke="#0B1120" stroke-width="1"/>`;
+  }).join('');
+
+  const startLabel = dates[0].slice(5).replace('-','/');
+  const endLabel = dates[dates.length-1].slice(5).replace('-','/');
+
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <polyline points="${linePts}" fill="none" stroke="#8592AC" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.8"/>
+    ${dots}
+    <text x="${padX}" y="${h-2}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="7.5" fill="#5C6B84">${startLabel}</text>
+    <text x="${w-padX}" y="${h-2}" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="7.5" fill="#5C6B84">${endLabel}</text>
+  </svg>`;
+}
+
+function toggleHistory(id){
+  const toggle = document.getElementById('toggle-' + id);
+  const panel = document.getElementById('panel-' + id);
+  const isOpen = panel.classList.toggle('open');
+  toggle.classList.toggle('open', isOpen);
+}
+
+function renderList(status, config){
+  document.getElementById('updated').textContent = status.last_checked
+    ? '最終チェック: ' + new Date(status.last_checked).toLocaleString('ja-JP')
+    : '未取得';
+
+  const listEl = document.getElementById('list');
+  if (!status.results || status.results.length === 0){
+    listEl.innerHTML = '<div class="empty">まだデータがありません。<br>GitHub Actionsの実行を待つか、右上の⚙から手動実行してください。</div>';
+    return;
+  }
+  listEl.innerHTML = status.results.map(r => {
+    if (r.error){
+      return `<div class="card"><div class="row"><div class="name">${r.name} <span class="code">${r.code}</span></div>
+              <span class="badge watch">エラー</span></div>
+              <div class="hint" style="margin-top:8px">${r.error}</div></div>`;
+    }
+    let ribbonLabel = '監視';
+    let state = 'watch';
+    if (r.buy_signal){ ribbonLabel = '買い'; state = 'buy'; }
+    if (r.sell_signal){ ribbonLabel = '売り'; state = 'sell'; }
+    const cornerRibbon = buildCornerRibbon(ribbonLabel, state);
+    const priceChart = (r.price_history && r.ma5_history)
+      ? buildPriceChart(r.price_history, r.ma5_history) : '';
+    const rsiChart = r.rsi_history ? buildRsiChart(r.rsi_history) : '';
+    const earnings = formatEarnings(r.earnings_date);
+    const buyCount = r.buy_count_1y ?? 0;
+    const sellCount = r.sell_count_1y ?? 0;
+    const oversoldCount = r.buy_oversold_count_1y ?? 0;
+    const historyChart = buildHistoryChart(r.chart_1y, r.signal_history);
+    return `<div class="card ${state !== 'watch' ? state : ''}">
+      ${cornerRibbon}
+      <div class="row">
+        <div class="name-line">
+          <span class="name">${r.name}</span>
+          <span class="code">${r.code}</span>
+          <span class="history-inline" id="toggle-${r.code}" onclick="toggleHistory('${r.code}')">
+            過去1年 <span class="b">買${buyCount}<span class="sub">(RSI20到達${oversoldCount})</span></span> <span class="s">売${sellCount}</span> <span class="chev">›</span>
+          </span>
+          <span class="earnings ${earnings.cls}">次回決算 ${earnings.text}</span>
+        </div>
+      </div>
+
+      <div class="history-panel" id="panel-${r.code}">
+        <div class="history-panel-inner">
+          ${historyChart}
+          <div class="history-legend">
+            <span><i style="background:#E8A33D"></i>買いシグナル</span>
+            <span><i class="ring"></i>RSI20到達</span>
+            <span><i style="background:#D9636C"></i>売りシグナル</span>
+          </div>
+        </div>
+      </div>
+
+      ${priceChart ? `<div class="chart-wrap">${priceChart}</div>` : ''}
+      ${rsiChart ? `<div class="chart-wrap">${rsiChart}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openDrawer(){
+  document.getElementById('gh_owner').value = LS.owner;
+  document.getElementById('gh_repo').value = LS.repo;
+  document.getElementById('gh_branch').value = LS.branch;
+  document.getElementById('gh_token').value = LS.token;
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('backdrop').classList.add('open');
+}
+function closeDrawer(){
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('backdrop').classList.remove('open');
+  // 接続設定を保存
+  LS.owner = document.getElementById('gh_owner').value.trim();
+  LS.repo = document.getElementById('gh_repo').value.trim();
+  LS.branch = document.getElementById('gh_branch').value.trim() || 'main';
+  LS.token = document.getElementById('gh_token').value.trim();
+  localStorage.setItem('gh_owner', LS.owner);
+  localStorage.setItem('gh_repo', LS.repo);
+  localStorage.setItem('gh_branch', LS.branch);
+  localStorage.setItem('gh_token', LS.token);
+  refreshAll();
+}
+
+function populateEditor(config){
+  document.getElementById('rsi_upper').value = config.buy_conditions.rsi_upper_threshold;
+  document.getElementById('rsi_oversold').value = config.buy_conditions.rsi_oversold_threshold;
+  document.getElementById('rsi_lower').value = config.sell_conditions.rsi_lower_threshold;
+
+  const editor = document.getElementById('stockEditor');
+  editor.innerHTML = '';
+  config.watchlist.forEach(s => addStockRow(s));
+}
+
+function addStockRow(stock){
+  stock = stock || {code:'', name:'', sell_watch:true};
+  const div = document.createElement('div');
+  div.className = 'stock-row';
+  div.innerHTML = `
+    <button class="del" onclick="this.parentElement.remove()">削除</button>
+    <div class="two">
+      <input class="f-code" placeholder="コード" value="${stock.code}">
+      <input class="f-name" placeholder="銘柄名" value="${stock.name}">
+    </div>
+    <label class="chk"><input type="checkbox" class="f-sell" ${stock.sell_watch ? 'checked':''}> 売りシグナルも監視する</label>
+  `;
+  document.getElementById('stockEditor').appendChild(div);
+}
+
+async function saveConfig(){
+  const msg = document.getElementById('statusMsg');
+  msg.textContent = '保存中…'; msg.className = 'status-msg';
+
+  const rows = document.querySelectorAll('#stockEditor .stock-row');
+  const watchlist = Array.from(rows).map(row => ({
+    code: row.querySelector('.f-code').value.trim(),
+    name: row.querySelector('.f-name').value.trim(),
+    sell_watch: row.querySelector('.f-sell').checked,
+  })).filter(s => s.code && s.name);
+
+  const newConfig = {
+    ...currentConfig,
+    watchlist,
+    buy_conditions: {
+      rsi_upper_threshold: Number(document.getElementById('rsi_upper').value),
+      rsi_oversold_threshold: Number(document.getElementById('rsi_oversold').value),
+    },
+    sell_conditions: {
+      rsi_lower_threshold: Number(document.getElementById('rsi_lower').value),
+    },
+  };
+
+  try{
+    const res = await fetch(apiUrl('config.json'), {
+      method: 'PUT',
+      headers: {...authHeaders(), 'Content-Type':'application/json'},
+      body: JSON.stringify({
+        message: 'update config.json from web app',
+        content: utf8ToB64(JSON.stringify(newConfig, null, 2)),
+        sha: configSha,
+        branch: LS.branch,
+      }),
+    });
+    if (!res.ok){
+      const t = await res.text();
+      throw new Error(`保存失敗 (${res.status}): ${t}`);
+    }
+    const data = await res.json();
+    configSha = data.content.sha;
+    currentConfig = newConfig;
+    msg.textContent = '保存しました';
+    msg.className = 'status-msg ok';
+  }catch(e){
+    msg.textContent = e.message;
+    msg.className = 'status-msg err';
+  }
+}
+
+refreshAll();
+
+// ---- Web Push ----
+const VAPID_PUBLIC_KEY = "BD1xkmAgJlkI6E9SorHcMMDhYmdlsQ2aMTya5RO6NCLMSisOzmCIfMdqHQBJsN8oeQ5GwiGpCwcgk4ujZEwWmAc";
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
+async function registerSW(){
+  if (!('serviceWorker' in navigator)) return null;
+  return navigator.serviceWorker.register('sw.js');
+}
+
+async function updatePushStatusUI(){
+  const el = document.getElementById('pushStatus');
+  const btn = document.getElementById('pushBtn');
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    el.textContent = 'この端末/ブラウザはWebプッシュに対応していません（ホーム画面に追加したアイコンから開いているか確認してください）。';
+    btn.style.display = 'none';
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    el.textContent = '通知は有効です。';
+    btn.textContent = '通知設定を再登録する';
+  } else if (Notification.permission === 'denied') {
+    el.textContent = '通知がブロックされています。iPhoneの設定アプリ → このアプリ → 通知、から許可してください。';
+  } else {
+    el.textContent = '通知はまだ有効になっていません。';
+    btn.textContent = '通知を有効にする';
+  }
+}
+
+async function enablePush(){
+  const el = document.getElementById('pushStatus');
+  try{
+    const reg = await registerSW();
+    if (!reg){ el.textContent = 'この端末はService Workerに対応していません。'; return; }
+
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted'){
+      el.textContent = '通知が許可されませんでした。';
+      return;
+    }
+
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub){
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+
+    // 既存の subscription.json の sha を取得（無ければ新規作成扱い）
+    let sha = null;
+    try{
+      const existing = await fetchJsonFile('subscription.json');
+      sha = existing.sha;
+    }catch(e){ /* 未作成なら無視 */ }
+
+    const body = {
+      message: 'update subscription.json from web app',
+      content: utf8ToB64(JSON.stringify(sub.toJSON(), null, 2)),
+      branch: LS.branch,
+    };
+    if (sha) body.sha = sha;
+
+    const res = await fetch(apiUrl('subscription.json'), {
+      method: 'PUT',
+      headers: {...authHeaders(), 'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`購読情報の保存に失敗 (${res.status})`);
+
+    el.textContent = '通知を有効にしました。';
+  }catch(e){
+    el.textContent = 'エラー: ' + e.message;
+  }
+}
+
+registerSW().then(updatePushStatusUI);
+</script>
+</body>
+</html>

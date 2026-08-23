@@ -1,0 +1,18 @@
+{
+  "rsi_period": 14,
+  "ma_period": 5,
+  "watchlist": [
+    { "code": "5016", "name": "JX金属",       "sell_watch": true },
+    { "code": "9433", "name": "KDDI",         "sell_watch": true },
+    { "code": "8061", "name": "西華産業",     "sell_watch": true },
+    { "code": "5803", "name": "フジクラ",     "sell_watch": true },
+    { "code": "8593", "name": "三菱HCキャピタル", "sell_watch": true }
+  ],
+  "buy_conditions": {
+    "rsi_upper_threshold": 35,
+    "rsi_oversold_threshold": 20
+  },
+  "sell_conditions": {
+    "rsi_lower_threshold": 75
+  }
+}
