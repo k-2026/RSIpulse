@@ -241,11 +241,34 @@ def send_webpush(subscription: dict, vapid_private_key: str, vapid_subject: str,
             vapid_private_key=vapid_private_key,
             vapid_claims={"sub": vapid_subject},
         )
+        print(f"Web Push送信成功: {title}")
     except WebPushException as e:
         print(f"Web Push通知の送信に失敗しました: {e}")
 
 
 def main():
+    # テスト通知モード: 銘柄チェックは行わず、通知の送受信だけを確認する
+    if os.environ.get("TEST_NOTIFICATION", "false").lower() == "true":
+        vapid_private_key = os.environ.get("VAPID_PRIVATE_KEY", "")
+        vapid_subject = os.environ.get("VAPID_SUBJECT", "mailto:example@example.com")
+        subscription = None
+        if os.path.exists(SUBSCRIPTION_PATH):
+            with open(SUBSCRIPTION_PATH, encoding="utf-8") as f:
+                subscription = json.load(f)
+        if not vapid_private_key:
+            print("エラー: VAPID_PRIVATE_KEY が設定されていません(GitHub Secretsを確認してください)")
+            return
+        if not subscription:
+            print("エラー: subscription.json が見つかりません(アプリの⚙で「通知を有効にする」を実行してください)")
+            return
+        send_webpush(
+            subscription, vapid_private_key, vapid_subject,
+            "🔔 テスト通知",
+            "この通知が届いていれば、通知の仕組みは正常に動作しています。",
+        )
+        print("テスト通知を送信しました。ログにエラーが出ていなければ、iPhoneに届いているはずです。")
+        return
+
     config = load_config()
     rsi_period = config["rsi_period"]
     ma_period = config["ma_period"]
