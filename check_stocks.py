@@ -64,7 +64,8 @@ def fetch_stock_data(code: str):
 
 
 def fetch_earnings_date(ticker) -> str | None:
-    """次回決算発表予定日を取得する。取得できなければNoneを返す（日本株はyfinance上でデータが無いことも多い）"""
+    """次回決算発表予定日を取得する。yfinanceのcalendarには過去の予測日が残っていることがあるため、
+    今日以降の日付だけを対象にして、その中で一番近いものを返す。取得できなければNone。"""
     try:
         cal = ticker.calendar
         dates = None
@@ -72,21 +73,37 @@ def fetch_earnings_date(ticker) -> str | None:
             dates = cal.get("Earnings Date")
         elif cal is not None and "Earnings Date" in getattr(cal, "index", []):
             dates = cal.loc["Earnings Date"].tolist()
-        if dates:
-            d = dates[0]
-            if hasattr(d, "isoformat"):
-                return d.isoformat()[:10]
-            return str(d)[:10]
+        if not dates:
+            return None
+
+        today = datetime.datetime.now(JST).date()
+        future_dates = []
+        for d in dates:
+            if hasattr(d, "date") and callable(getattr(d, "date")):
+                d_date = d.date()
+            elif isinstance(d, datetime.date):
+                d_date = d
+            else:
+                try:
+                    d_date = datetime.date.fromisoformat(str(d)[:10])
+                except Exception:
+                    continue
+            if d_date >= today:
+                future_dates.append(d_date)
+
+        if not future_dates:
+            return None
+        return min(future_dates).isoformat()
     except Exception:
         pass
     return None
 
 
-def evaluate_stock(closes: pd.Series, current_price: float, rsi_period: int, ma_period: int, history_len: int = 30):
+def evaluate_stock(closes: pd.Series, current_price: float, rsi_period: int, ma_period: int, history_len: int = 65):
     """
     直近の確定終値 closes と 本日時点の現在値 current_price から、
     「本日の終値がこの値になったと仮定した場合」のRSI・5MA・クロス判定を行う。
-    あわせて、チャート表示用に直近history_len日分の価格/5MA/RSIの系列も作る。
+    あわせて、チャート表示用に直近history_len日分（デフォルトは3ヶ月相当）の価格/5MA/RSI/日付の系列も作る。
     """
     # 直近の確定終値だけで見た「前日時点」のRSIと5MA
     prev_rsi_series = compute_rsi(closes, rsi_period)
@@ -116,6 +133,7 @@ def evaluate_stock(closes: pd.Series, current_price: float, rsi_period: int, ma_
         (round(v, 2) if pd.notna(v) else None)
         for v in today_rsi_series.tail(history_len).tolist()
     ]
+    date_history = [dt.strftime("%Y-%m-%d") for dt in closes_with_today.tail(history_len).index]
 
     return {
         "current_price": round(current_price, 2),
@@ -127,6 +145,7 @@ def evaluate_stock(closes: pd.Series, current_price: float, rsi_period: int, ma_
         "price_history": price_history,
         "ma5_history": ma5_history,
         "rsi_history": rsi_history,
+        "date_history": date_history,
     }
 
 
