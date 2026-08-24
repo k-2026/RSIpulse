@@ -2,8 +2,14 @@ name: Stock Check
 
 on:
   schedule:
+    # 14:40 JST = 05:40 UTC、平日のみ
     - cron: "40 5 * * 1-5"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      test_notification:
+        description: "true にすると銘柄チェックはせず、テスト通知だけを送信します"
+        required: false
+        default: "false"
 
 permissions:
   contents: write
@@ -27,6 +33,7 @@ jobs:
         env:
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          TEST_NOTIFICATION: ${{ github.event.inputs.test_notification }}
         run: python check_stocks.py
 
       - name: Commit status.json
