@@ -172,7 +172,11 @@ async function fetchJsonFile(path){
 }
 
 async function refreshAll(){
-  if (!LS.owner || !LS.repo){ openDrawer(); return; }
+  if (!LS.owner || !LS.repo){
+    const listEl = document.getElementById('list');
+    listEl.innerHTML = '<div class="empty">右上の⚙から接続設定を入力してください。</div>';
+    return;
+  }
   const listEl = document.getElementById('list');
   listEl.innerHTML = '<div class="empty">読み込み中…</div>';
   try{
@@ -194,12 +198,12 @@ function buildCornerRibbon(label, kind){
   const textMap = { buy: '#1A1204', sell: '#2A0A0D', watch: '#C7D0E0' };
   const fill = fillMap[kind] || fillMap.watch;
   const tcolor = textMap[kind] || textMap.watch;
-  // 右辺は角丸にせず直角のままにして、下に続くカードの枠線とぴったり接続させる
+  // 右辺は角丸にせず直角のままにして、下に続くカードの枠線とぴったり接続させる。
+  // マスクはタブ(boxXより右)だけに掛け、それより左側は元のカード枠線をそのまま見せる(二重線防止)。
   const W = 68, H = 30, boxX = 12, r = 10;
   const path = `M${boxX+r},0 H${W-r} Q${W},0 ${W},${r} V${H} H${boxX+r} Q${boxX},${H} ${boxX},${H-r} V${r} Q${boxX},0 ${boxX+r},0 Z`;
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="corner-ribbon" aria-hidden="true">
-    <rect x="0" y="0" width="${W}" height="${H}" fill="#131B2E"/>
-    <rect x="0" y="0" width="${boxX}" height="2" fill="${fill}"/>
+    <rect x="${boxX}" y="0" width="${W-boxX}" height="${H}" fill="#131B2E"/>
     <path d="${path}" fill="${fill}"/>
     <text x="${boxX + (W-boxX)/2}" y="${H/2+5}" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif" font-size="13" font-weight="800" fill="${tcolor}">${label}</text>
   </svg>`;
@@ -218,15 +222,32 @@ function formatEarnings(dateStr){
   return { text: label, cls };
 }
 
-function buildPriceChart(priceHist, ma5Hist, w=300, h=58){
+function buildDateAxis(dateHist, plotL, plotR, plotBottom, plotTop, showLabels=true){
+  if (!dateHist || dateHist.length < 2) return '';
+  const n = dateHist.length;
+  const fracs = [0, 1/3, 2/3, 1];
+  return fracs.map((f, idx) => {
+    const i = Math.round(f * (n - 1));
+    const x = plotL + f * (plotR - plotL);
+    const anchor = idx === 0 ? 'start' : (idx === fracs.length-1 ? 'end' : 'middle');
+    const gridLine = `<line x1="${x.toFixed(1)}" y1="${plotTop}" x2="${x.toFixed(1)}" y2="${plotBottom}" stroke="#22304A" stroke-width="1" stroke-dasharray="2,2"/>`;
+    const label = showLabels
+      ? `<text x="${x.toFixed(1)}" y="${plotBottom+9.5}" text-anchor="${anchor}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="5.5" fill="#5C6B84">${fmtAxisDate(dateHist[i])}</text>`
+      : '';
+    return `${gridLine}${label}`;
+  }).join('');
+}
+
+function buildPriceChart(priceHist, ma5Hist, dateHist, w=300, h=54){
   const vals = [...priceHist, ...ma5Hist].filter(v => v != null);
   if (vals.length < 2) return '';
   const min = Math.min(...vals), max = Math.max(...vals);
   const range = (max - min) || 1;
   const labelW = 38;             // 右側の数値表示エリア
   const plotL = 2, plotR = w - labelW;
-  const padY = 6;
-  const yOf = (v) => (h - padY) - ((v - min) / range) * (h - padY*2);
+  const padTop = 6, padBottom = 4;   // 日付軸はRSI側だけなので下余白は最小限
+  const plotH = h - padTop - padBottom;
+  const yOf = (v) => padTop + plotH - ((v - min) / range) * plotH;
   const toPts = (arr) => arr.map((v, i) => {
     const x = (i / (arr.length - 1)) * (plotR - plotL) + plotL;
     return `${x.toFixed(1)},${yOf(v).toFixed(1)}`;
@@ -242,29 +263,40 @@ function buildPriceChart(priceHist, ma5Hist, w=300, h=58){
 
   const lastPrice = priceHist[priceHist.length-1];
   const lastY = yOf(lastPrice);
-  const clampedY = Math.min(h-6, Math.max(6, lastY));
+  const clampedY = Math.min(padTop+plotH-2, Math.max(padTop+2, lastY));
   const priceLabel = lastPrice.toLocaleString();
   const boxW = priceLabel.length * 5.4 + 6;   // 文字数に応じて枠の幅を可変に
   const boxX = w - boxW - 1;
 
+  const dateAxis = buildDateAxis(dateHist, plotL, plotR, padTop+plotH, padTop, false); // 縦線のみ、日付文字はRSI側にのみ表示
+
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
     ${gridLines}
+    ${dateAxis}
     <polyline points="${toPts(priceHist)}" fill="none" stroke="#8592AC" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>
     <polyline points="${toPts(ma5Hist)}" fill="none" stroke="#F02FD0" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>
-    <rect x="${plotL}" y="1" width="22" height="9" rx="2" fill="#131B2E"/>
-    <text x="${plotL+2.5}" y="8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="7" font-weight="700" fill="#F02FD0">5MA</text>
+    <rect x="${plotL}" y="${padTop-5}" width="22" height="9" rx="2" fill="#131B2E"/>
+    <text x="${plotL+2.5}" y="${padTop+2}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="7" font-weight="700" fill="#F02FD0">5MA</text>
     <rect x="${boxX.toFixed(1)}" y="${(clampedY-5.5).toFixed(1)}" width="${boxW.toFixed(1)}" height="11" rx="2.5" fill="#E4E9F2"/>
     <text x="${(boxX+boxW/2).toFixed(1)}" y="${(clampedY+2.5).toFixed(1)}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8" font-weight="700" fill="#0B1120">${priceLabel}</text>
   </svg>`;
 }
 
-function buildRsiChart(rsiHist, w=300, h=46){
+function fmtAxisDate(iso){
+  if (!iso) return '';
+  const parts = iso.split('-');
+  if (parts.length < 3) return iso;
+  return `${parseInt(parts[1],10)}/${parseInt(parts[2],10)}`;
+}
+
+function buildRsiChart(rsiHist, dateHist, w=300, h=54){
   const vals = rsiHist.filter(v => v != null);
   if (vals.length < 2) return '';
   const labelW = 38;
   const plotL = 2, plotR = w - labelW;
-  const padY = 6;
-  const yOf = (v) => (h - padY) - (v / 100) * (h - padY*2);
+  const padTop = 6, padBottom = 14;
+  const plotH = h - padTop - padBottom;
+  const yOf = (v) => padTop + plotH - (v / 100) * plotH;
   const toPts = (arr) => {
     let pts = [];
     arr.forEach((v, i) => {
@@ -285,13 +317,16 @@ function buildRsiChart(rsiHist, w=300, h=46){
 
   const lastRsi = vals[vals.length-1];
   const lastY = yOf(lastRsi);
-  const clampedY = Math.min(h-6, Math.max(6, lastY));
+  const clampedY = Math.min(padTop+plotH-2, Math.max(padTop+2, lastY));
   const rsiLabel = String(lastRsi);
   const boxW = rsiLabel.length * 5.4 + 6;
   const boxX = w - boxW - 1;
 
+  const dateAxis = buildDateAxis(dateHist, plotL, plotR, padTop+plotH, padTop);
+
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
     ${gridLines}
+    ${dateAxis}
     <polyline points="${toPts(rsiHist)}" fill="none" stroke="#33D6A6" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/>
     <rect x="${boxX.toFixed(1)}" y="${(clampedY-5.5).toFixed(1)}" width="${boxW.toFixed(1)}" height="11" rx="2.5" fill="#E4E9F2"/>
     <text x="${(boxX+boxW/2).toFixed(1)}" y="${(clampedY+2.5).toFixed(1)}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8" font-weight="700" fill="#0B1120">${rsiLabel}</text>
@@ -366,8 +401,8 @@ function renderList(status, config){
     if (r.sell_signal){ ribbonLabel = '売り'; state = 'sell'; }
     const cornerRibbon = buildCornerRibbon(ribbonLabel, state);
     const priceChart = (r.price_history && r.ma5_history)
-      ? buildPriceChart(r.price_history, r.ma5_history) : '';
-    const rsiChart = r.rsi_history ? buildRsiChart(r.rsi_history) : '';
+      ? buildPriceChart(r.price_history, r.ma5_history, r.date_history) : '';
+    const rsiChart = r.rsi_history ? buildRsiChart(r.rsi_history, r.date_history) : '';
     const earnings = formatEarnings(r.earnings_date);
     const buyCount = r.buy_count_1y ?? 0;
     const sellCount = r.sell_count_1y ?? 0;
@@ -380,7 +415,7 @@ function renderList(status, config){
           <span class="name">${r.name}</span>
           <span class="code">${r.code}</span>
           <span class="history-inline" id="toggle-${r.code}" onclick="toggleHistory('${r.code}')">
-            過去1年 <span class="b">買${buyCount}<span class="sub">(RSI20到達${oversoldCount})</span></span> <span class="s">売${sellCount}</span> <span class="chev">›</span>
+            過去1年 <span class="b">買${buyCount}</span> <span class="s">売${sellCount}</span> <span class="chev">›</span>
           </span>
           <span class="earnings ${earnings.cls}">次回決算 ${earnings.text}</span>
         </div>
@@ -390,9 +425,9 @@ function renderList(status, config){
         <div class="history-panel-inner">
           ${historyChart}
           <div class="history-legend">
-            <span><i style="background:#E8A33D"></i>買いシグナル</span>
-            <span><i class="ring"></i>RSI20到達</span>
-            <span><i style="background:#D9636C"></i>売りシグナル</span>
+            <span><i style="background:#E8A33D"></i>買いシグナル ${buyCount}回</span>
+            <span><i class="ring"></i>RSI20到達 ${oversoldCount}回</span>
+            <span><i style="background:#D9636C"></i>売りシグナル ${sellCount}回</span>
           </div>
         </div>
       </div>
@@ -501,6 +536,7 @@ async function saveConfig(){
 }
 
 refreshAll();
+if (!LS.owner || !LS.repo) openDrawer(); // 初回のみ、未設定なら自動で設定画面を開く
 
 // ---- Web Push ----
 const VAPID_PUBLIC_KEY = "BD1xkmAgJlkI6E9SorHcMMDhYmdlsQ2aMTya5RO6NCLMSisOzmCIfMdqHQBJsN8oeQ5GwiGpCwcgk4ujZEwWmAc";
